@@ -80,6 +80,7 @@ L.ImageTransform = L.ImageOverlay.extend({
         //TODO createImage util method to remove duplication
         this._imgLoaded = false;
         L.extend(this._imgNode, {
+            crossOrigin: 'anonymous',
             galleryimg: 'no',
             onselectstart: L.Util.falseFn,
             onmousemove: L.Util.falseFn,

@@ -34,14 +34,95 @@
 
             var sideBar = new L.Control.gmxSidebar({className: 'scenesearch'}),
                 div = L.DomUtil.create('div', pluginName + '-content'),
+                filteringBox = L.DomUtil.create('div', pluginName + '-filtering-box', div),
+                groupCmd = L.DomUtil.create('div', pluginName + '-group-cmd', filteringBox),
+                gaussian = L.DomUtil.create('span', '', groupCmd),
+                sharpen = L.DomUtil.create('span', '', groupCmd),
+                edges = L.DomUtil.create('span', '', groupCmd),
+
+                chartWrapper = L.DomUtil.create('div', pluginName + '-chart-wrapper', filteringBox),
+                chartCanvas = L.DomUtil.create('canvas', pluginName + '-chart', chartWrapper),
+                power = L.DomUtil.create('div', pluginName + '-power', chartWrapper),
+                frequency = L.DomUtil.create('div', pluginName + '-frequency', chartWrapper),
+
+                editorWrapper = L.DomUtil.create('div', pluginName + '-editor-wrapper', filteringBox),
+                editorCanvas = L.DomUtil.create('canvas', pluginName + '-editor', editorWrapper),
+                power = L.DomUtil.create('div', pluginName + '-power', editorWrapper),
+                gain = L.DomUtil.create('div', pluginName + '-gain', editorWrapper),
+                frequency2 = L.DomUtil.create('div', pluginName + '-frequency', editorWrapper),
+                instructions = L.DomUtil.create('div', pluginName + '-instructions', editorWrapper),
+
                 shap = L.DomUtil.create('div', pluginName + '-header', div),
                 title = L.DomUtil.create('span', '', shap),
                 refresh = L.DomUtil.create('i', 'icon-refresh', shap),
-                image = null,
-                selectName = null,
-                selectID = null;
+                filteringInputBox = L.DomUtil.create('div', pluginName + '-filtering-input-box', div),
+                filtering = L.DomUtil.create('input', pluginName + '-filtering', filteringInputBox),
+                filteringTitle = L.DomUtil.create('span', pluginName + '-filtering-title', filteringInputBox),
+                image, selectName, selectID,
+                curve, filterer, editor;
 
             refresh.title = 'Обновить';
+            filtering.type = 'checkbox';
+            filtering.onchange = function (ev) {
+console.log('fffffff', ev);
+
+            };
+            filteringTitle.innerHTML = ' - фильтрация';
+            power.innerHTML = 'Power';
+            gain.innerHTML = 'Gain';
+            frequency.innerHTML = 'Frequency';
+            frequency2.innerHTML = 'Frequency';
+            instructions.innerHTML = 'Click on curve to add points.<br/> Click and drag points to move them.';
+            editorCanvas.width = chartCanvas.width = 720;
+            editorCanvas.height = chartCanvas.height = 225;
+/*            
+            filteringBox.innerHTML += 
+                '<div id="chart-wrapper">' +
+                    '<canvas id="chart" width="720" height="225"></canvas>' +
+                    '<div id="power" class="label">Power</div>' +
+                    '<div id="frequency" class="label">Frequency</div>' +
+                '</div>' +
+                '<div id="editor-wrapper">' +
+                    '<canvas id="editor" width="720" height="150"></canvas>' +
+
+                    '<div id="gain" class="label">Gain</div>' +
+                    '<div id="frequency2" class="label">Frequency</div>' +
+
+                    '<div id="instructions">' +
+                        'Click on curve to add points.<br/>' +
+                        'Click and drag points to move them.' +
+                    '</div>' +
+                '</div>';
+*/
+            gaussian.innerHTML = 'Gaussian Blur';
+            gaussian.onclick = function () {
+                curve.setPoints([
+                    [11, 76],
+                    [56, 73],
+                    [187, 17],
+                    [314, 0]
+                ]);
+            };
+
+            sharpen.innerHTML = 'Sharpen';
+            sharpen.onclick = function () {
+                curve.setPoints([
+                    [173, 74],
+                    [252, 79],
+                    [416, 134],
+                    [521, 142] 
+                ]);
+            };
+
+            edges.innerHTML = 'Edge Detection';
+            edges.onclick = function () {
+                curve.setPoints([
+                    [9, 0],
+                    [41, 2],
+                    [411, 122],
+                    [675, 150]
+                ]);
+            };
 
             var getAnchors = function(p, type) {
                 if (type === 1) {
@@ -95,47 +176,48 @@
                         return it.reverse();
                     });
                 }
-                L.gmxUtil.loaderStatus(p.url);
-                image = L.imageTransform(p.url,
+                // var url = p.url;
+                var url = 'http://search.kosmosnimki.ru/QuickLookImage.ashx?id=' + p.id;
+//console.log('fffffff', p.url);
+                
+                L.gmxUtil.loaderStatus(url);
+                image = L.imageTransform(url,
                     getAnchors(p, type),
                     { opacity: 1, clip: clipCoords, disableSetClip: false }
                     )
                     .on('load', function() {
-                        L.gmxUtil.loaderStatus(p.url, true);
+                        L.gmxUtil.loaderStatus(url, true);
+
+                        var resPtx = image._canvas.getContext('2d');
+                        var canvas = L.DomUtil.create('canvas');
+                        canvas.width = image._canvas.width;
+                        canvas.height = image._canvas.height;
+                        
+                        filterer = new Filterer(canvas);
+                                        
+                        curve.addChangeListener(function () {
+                            var filterArray = new Float32Array(CURVE_CANVAS_WIDTH);
+                            curve.iterate(0, CURVE_CANVAS_WIDTH - 1, 1, function (x, y) {
+                                filterArray[x] = Math.max(0.0, y / CURVE_CANVAS_HEIGHT * CURVE_SCALE);
+                            });
+
+                            chart.draw(curve);
+
+                            filterer.filter(filterArray);
+                            var img = new Image();
+                            img.src = canvas.toDataURL("image/png");
+                            resPtx.drawImage(img, 0, 0);
+                    // console.log('curve', filterArray);
+                        });
+                        curve.triggerChangeListeners();
+                        var powersByFrequency = filterer.setImage(image._imgNode);
+                        chart.setData(powersByFrequency, curve);
+                        curve.triggerChangeListeners();
+                
                     }, this)
-                    // .on('click', function(ev) {
-// console.log('click', ev);
-                    // }, this)
-                    // .on('contextmenu', function(ev) {
-// console.log('contextmenu', ev);
-                    // }, this)
                     .addTo(lmap);
                 
                 lmap.fitBounds(image._bounds);
-/*
-                var _fireMouseEvent = function (e) {
-
-                    this.fire(e.type, {
-                        originalEvent: e,
-                        latlng: this._bounds.getCenter()
-                    });
-
-                    if (e.type === 'contextmenu' && this.hasEventListeners(e.type)) {
-                        L.DomEvent.preventDefault(e);
-                    }
-                    if (e.type !== 'mousedown') {
-                        L.DomEvent.stopPropagation(e);
-                    } else {
-                        L.DomEvent.preventDefault(e);
-                    }
-                };
-                var icon = image._image,
-                    events = ['click', 'dblclick', 'mousedown', 'mouseover', 'mouseout', 'contextmenu'];
-                L.DomUtil.addClass(icon, 'leaflet-clickable');
-                for (var i = 0; i < events.length; i++) {
-                    L.DomEvent.on(icon, events[i], _fireMouseEvent, image);
-                }
-*/
             };
 
             function getSceneList() {
@@ -252,7 +334,9 @@
                                     }
                                     satellites[name].push(it);
                                 });
-                                setIdsOpt(selectName.selectedOptions[0].id);
+                                if (selectName.selectedOptions[0]) {
+                                    setIdsOpt(selectName.selectedOptions[0].id);
+                                }
                                 title.innerHTML = 'Найдено снимков: <b>' + values.length + '</b> (<b>' + satCount + '</b> спутников)';
                             } else if (values === 'exceeds') {
                                 title.innerHTML = '<b>Ограничьте область поиска!</b>';
@@ -279,8 +363,32 @@
             }).on('statechange', function(ev) {
                 var isActive = ev.target.options.isActive;
                 if (isActive) {
-                    if (!L.ImageTransform) {
-                        gmxCore.loadScript(path + 'L.ImageTransform.js');
+                    if (!window.Filterer) {
+                        gmxCore.loadScript(path + '/filtering/shared.js');
+                        gmxCore.loadScript(path + '/filtering/curve.js').then(function() {
+console.log('curve', Curve);
+                            curve = new Curve(editorCanvas, {
+                                pointSize: 6,
+                                pointColor: 'white',
+                                selectionRadius: 20,
+                                addDistance: 20,
+                                overPointCursor: 'move',
+                                overCurveCursor: 'crosshair',
+                                defaultCursor: 'default',
+                                curveColor: 'white',
+                                backgroundColor: 'rgb(50, 50, 50)',
+                                minSpacing: 5
+                            });
+                            curve.add(200, 75);
+                        });
+                        gmxCore.loadScript(path + '/filtering/filterer.js');
+                        gmxCore.loadScript(path + '/filtering/chart.js').then(function() {
+                            chart = new Chart(chartCanvas);
+console.log('chart', chart);
+                        });
+                        if (!L.ImageTransform) {
+                            gmxCore.loadScript(path + 'L.ImageTransform.js');
+                        }
                     }
                     lmap.addControl(sideBar);
                     getSceneList();
